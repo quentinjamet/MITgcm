@@ -80,3 +80,107 @@ def readstats(fname):
         locals = dict((fld,np.array(res[fld])[:,1:]) for fld in flds)
         return locals,totals,itrs
 
+
+def advec_vm(uuu, vvv, www, grd, cori=False):
+
+    '''
+    Compute the 3D advection and advective fluxes
+    of meridional momentum.
+
+    Input:
+       - u, v, w: three dimensional velocity field
+       - grd: list of model grid varaibles
+    Output:
+       - ADVx_Vm, ADVy_Vm, ADVrE_Vm: zonal, meridional and vertical v-momentum flux
+       - Vm_Advec: v-momentum fulx divergence.
+                   In MITgcm diagnostics, Vm_Advec also includes 
+                   Coriolis (Vm_Cori) and metric term (Vm_metr).
+                   They can be computed and added with cori=True (to be done)
+    '''
+
+    #-- grid --
+    dxG = grd["DXG"]
+    dyG = grd["DYG"]
+    drF = grd["DRF"]
+    hW  = grd["hFacW"]
+    hS  = grd["hFacS"]
+    rA  = grd["RAC"]
+    #
+    xA = dyG[np.newaxis, :, :] * drF * hW
+    yA = dxG[np.newaxis, :, :] * drF * hS
+    maskC = hC * 1.0
+    maskC[ np.where(maskC>0 ) ] = 1.0
+
+    #-- get and check dimensions --
+    [nr, ny, nx] = hS.shape
+    tmp = nr*ny*nx
+    if np.size(uuu)!=np.size(vvv) or np.size(uuu)!=np.size(www) or np.size(uuu)!=tmp:
+      raise ValueError("advec_vm: velocity field do not have the same/right dimension")
+    #
+    
+    #-- zonal advective flux of V --
+    #- transport -
+    uTrans = uuu * xA
+    #- adv flux -
+    ADVx_Vm = np.zeros([nr, ny, nx])
+    ADVx_Vm[:, 1:, 1:] = \
+        0.25 *(uTrans[:, 1:, 1:] + uTrans[:, :-1, 1:] ) \
+             *(   vvv[:, 1:, 1:] + vvv[:, 1:, :-1]    )
+
+    #-- meridional advective flux of V --
+    #- transport -
+    vTrans = vvv * yA
+    #- adv flux -
+    ADVy_Vm = np.zeros([nr, ny, nx])
+    ADVy_Vm[:, :-1, :] = \
+            0.25 *(vTrans[:, :-1, :] + vTrans[:, 1:, :] ) \
+                 *(   vvv[:, :-1, :] + vvv[:, 1:, :]   )
+
+    #-- vertical advective flux of V --
+    #- transport -
+    # rTransV :: vertical transport (above V point) 
+    rTransV = np.zeros([nr, ny, nx])
+    rTransV[:, 1:, :] = \
+            0.5 * ( www[:, :-1, :] * rA[np.newaxis, :-1, :] \
+                   +www[:, 1: , :] * rA[np.newaxis, 1: , :] )
+    #- advective flux -
+    # surface layer 
+    ADVrE_Vm = np.zeros([nr, ny, nx])
+    ADVrE_Vm[0, :, :] = rTransV[0, :, :] * tmpv[0, :, :]
+    #ADVrE_Vm[0, :, :] = 0.0         # rigid lid, for checking
+    # interior flux
+    ADVrE_Vm[1:, :, :] = rTransV[1:, :, :] * \
+            0.5 * ( vvv[1:, :, :] + vvv[:-1, :, :])
+    # (linear) Free-surface correction at k>1
+    ADVrE_Vm[1:, 1:, :] = ADVrE_Vm[1:, 1:, :] \
+            + 0.25 * (\
+              www[1:, 1:, :] * rA[np.newaxis, 1:, :] *\
+                (maskC[1:, 1:, :] - maskC[:-1, 1:, :]) \
+             +www[1:, :-1, :] * rA[np.newaxis, :-1, :] *\
+                (maskC[1:, :-1, :] - maskC[:-1, :-1, :]) \
+                     ) * vvv[1:, 1:, :]
+
+    #-- flux divergence --
+    #- zonal -
+    gVx = np.zeros([nr, ny, nx])
+    gVx[:, :, :-1] = - 1 / (hS * drF * rAs[np.newaxis, :, :])[:, :, :-1] \
+            * (ADVx_Vm[:, :, 1:] - ADVx_Vm[:, :, :-1])
+    #- meridional -
+    gVy = np.zeros([nr, ny, nx])
+    gVy[:, 1:, :] = - 1 / (hS * drF * rAs[np.newaxis, :, :])[:, 1:, :] \
+            * (ADVy_Vm[:, 1:, :]-ADVy_Vm[:, :-1, :])
+    #- vertical -
+    gVz = np.zeros([nr, ny, nx])
+    gVz[:-1, :, :] = - 1 / (hS * drF * rAs[np.newaxis, :, :])[:-1, :, :] \
+            * (ADVrE_Vm[:-1, :, :]-ADVrE_Vm[1:, :, :])
+    gVz[-1, :, :] = - 1 / (hS * drF * rAs[np.newaxis, :, :])[-1, :, :] \
+            * (ADVrE_Vm[-1, :, :] - 0.0)     #no bottom flux at bottom cell
+    if cori:
+      print("Include Coriolis and metric terms in Vm_Advec (following MITgcm diagnostic package convention)")
+      print("TO BE DONE (07/21/2023)")
+    #- total -
+    Vm_Advec = gVx + gVy + gVz
+
+    return Vm_Advec, ADVx_Vm, ADVy_Vm, ADVrE_Vm
+
+
