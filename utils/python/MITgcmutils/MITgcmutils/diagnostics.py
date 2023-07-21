@@ -104,7 +104,9 @@ def advec_vm(uuu, vvv, www, grd, cori=False):
     drF = grd["DRF"]
     hW  = grd["hFacW"]
     hS  = grd["hFacS"]
+    hC  = grd["hFacC"]
     rA  = grd["RAC"]
+    rAs = grd["RAS"]
     #
     xA = dyG[np.newaxis, :, :] * drF * hW
     yA = dxG[np.newaxis, :, :] * drF * hS
@@ -146,7 +148,7 @@ def advec_vm(uuu, vvv, www, grd, cori=False):
     #- advective flux -
     # surface layer 
     ADVrE_Vm = np.zeros([nr, ny, nx])
-    ADVrE_Vm[0, :, :] = rTransV[0, :, :] * tmpv[0, :, :]
+    ADVrE_Vm[0, :, :] = rTransV[0, :, :] * vvv[0, :, :]
     #ADVrE_Vm[0, :, :] = 0.0         # rigid lid, for checking
     # interior flux
     ADVrE_Vm[1:, :, :] = rTransV[1:, :, :] * \
