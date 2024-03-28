@@ -85,7 +85,7 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
 
     '''
     Compute the 3D advection and advective fluxes
-    of zonal momentum.
+    of zonal momentum (from mom_u_adv_uu.F).
 
     Input:
        - u, v, w: three dimensional velocity field
@@ -106,7 +106,7 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
     hS  = grd["hFacS"]
     hC  = grd["hFacC"]
     rA  = grd["RAC"]
-    rAs = grd["RAW"]
+    rAw = grd["RAW"]
     #
     xA = dyG[np.newaxis, :, :] * drF * hW
     yA = dxG[np.newaxis, :, :] * drF * hS
@@ -114,53 +114,53 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
     maskC[ np.where(maskC>0 ) ] = 1.0
 
     #-- get and check dimensions --
-    [nr, ny, nx] = hS.shape
+    [nr, ny, nx] = hW.shape
     tmp = nr*ny*nx
     if np.size(uuu)!=np.size(vvv) or np.size(uuu)!=np.size(www) or np.size(uuu)!=tmp:
       raise ValueError("advec_vm: velocity field do not have the same/right dimension")
     #
 
-    #-- zonal advective flux of U --
+    #-- zonal advective flux of U (from mom_u_adv_uu.F) --
     #- transport -
-    uTrans = tmpu * xA
+    uTrans = uuu * xA
     #- adv flux -
-    AdvectFluxUU = np.zeros([nr, ny, nx])
-    AdvectFluxUU[:, :, :-1] = \
+    ADVx_Um = np.zeros([nr, ny, nx])
+    ADVx_Um[:, :, :-1] = \
             0.25 *(uTrans[:, :, :-1] + uTrans[:, :, 1:] ) \
-                 *(  tmpu[:, :, :-1] +   tmpu[:, :, 1:]   )
+                 *(   uuu[:, :, :-1] +    uuu[:, :, 1:]   )
     
-    #-- meridional advective flux of U --
+    #-- meridional advective flux of U (from mom_u_adv_vu.F) --
     #- transport -
-    vTrans = tmpv * yA
+    vTrans = vvv * yA
     #- adv flux -
-    AdvectFluxVV = np.zeros([nr, ny, nx])
-    AdvectFluxVV[:, 1:, 1:] = \
+    ADVy_Um = np.zeros([nr, ny, nx])
+    ADVy_Um[:, 1:, 1:] = \
             0.25 *(vTrans[:, 1:, 1:] + vTrans[:, 1:, :-1] ) \
-                 *(  tmpu[:, 1:, 1:] +   tmpu[:, :-1, 1:]   )
+                 *(   uuu[:, 1:, 1:] +    uuu[:, :-1, 1:]   )
     
     #-- vertical advective flux of U --
     #- transport -
     # rTransU :: vertical transport (above U point) 
     rTransU = np.zeros([nr, ny, nx])
     rTransU[:, :, 1:] = \
-            0.5 * ( tmpw[:, :, :-1] * rA[np.newaxis, :, :-1] \
-                   +tmpw[:, :, 1: ] * rA[np.newaxis, :, 1: ] )
+            0.5 * ( www[:, :, :-1] * rA[np.newaxis, :, :-1] \
+                   +www[:, :, 1: ] * rA[np.newaxis, :, 1: ] )
     #- advective flux -
     # surface layer 
-    advectiveFluxWU = np.zeros([nr, ny, nx])
-    advectiveFluxWU[0, :, :] = rTransU[0, :, :] * tmpu[0, :, :]
-    #advectiveFluxWV[0, :, :] = 0.0         # rigid lid, for checking
+    ADVrE_Um = np.zeros([nr, ny, nx])
+    ADVrE_Um[0, :, :] = rTransU[0, :, :] * uuu[0, :, :]
+    #ADVrE_Um[0, :, :] = 0.0         # rigid lid, for checking
     # interior flux
-    advectiveFluxWU[1:, :, :] = rTransU[1:, :, :] * \
-            0.5 * ( tmpu[1:, :, :] + tmpu[:-1, :, :])
+    ADVrE_Um[1:, :, :] = rTransU[1:, :, :] * \
+            0.5 * ( uuu[1:, :, :] + uuu[:-1, :, :])
     # (linear) Free-surface correction at k>1
-    advectiveFluxWU[1:, :, 1:] = advectiveFluxWU[1:, :, 1:] \
+    ADVrE_Um[1:, :, 1:] = ADVrE_Um[1:, :, 1:] \
             + 0.25 * (\
-              tmpw[1:, :, 1:] * rA[np.newaxis, :, 1:] *\
+              www[1:, :, 1:] * rA[np.newaxis, :, 1:] *\
                 (maskC[1:, :, 1:] - maskC[:-1, :, 1:]) \
-             +tmpw[1:, :, :-1] * rA[np.newaxis, :, :-1] *\
+             +www[1:, :, :-1] * rA[np.newaxis, :, :-1] *\
                 (maskC[1:, :, :-1] - maskC[:-1, :, :-1]) \
-                     ) * tmpu[1:, :, 1:]
+                     ) * uuu[1:, :, 1:]
         
     
     #-- flux divergence --
