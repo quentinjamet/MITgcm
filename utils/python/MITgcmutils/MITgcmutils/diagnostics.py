@@ -85,7 +85,7 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
 
     '''
     Compute the 3D advection and advective fluxes
-    of zonal momentum (from mom_u_adv_uu.F).
+    of zonal momentum.
 
     Input:
        - u, v, w: three dimensional velocity field
@@ -138,7 +138,7 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
             0.25 *(vTrans[:, 1:, 1:] + vTrans[:, 1:, :-1] ) \
                  *(   uuu[:, 1:, 1:] +    uuu[:, :-1, 1:]   )
     
-    #-- vertical advective flux of U --
+    #-- vertical advective flux of U (from mom_u_adv_wu.F) --
     #- transport -
     # rTransU :: vertical transport (above U point) 
     rTransU = np.zeros([nr, ny, nx])
@@ -163,7 +163,7 @@ def advec_um(uuu, vvv, www, grd, cori=False, metr=False):
                      ) * uuu[1:, :, 1:]
         
     
-    #-- flux divergence --
+    #-- flux divergence (from mom_fluxform.F) --
     #- zonal -
     gUx = np.zeros([nr, ny, nx])
     gUx[:, :-1, :] = - 1 / (hW * drF * rAw[np.newaxis, :, :])[:, :-1, :] \
@@ -226,7 +226,7 @@ def advec_vm(uuu, vvv, www, grd, cori=False, metr=False):
       raise ValueError("advec_vm: velocity field do not have the same/right dimension")
     #
     
-    #-- zonal advective flux of V --
+    #-- zonal advective flux of V (mom_v_adv_uv.F) --
     #- transport -
     uTrans = uuu * xA
     #- adv flux -
@@ -235,7 +235,7 @@ def advec_vm(uuu, vvv, www, grd, cori=False, metr=False):
         0.25 *(uTrans[:, 1:, 1:] + uTrans[:, :-1, 1:] ) \
              *(   vvv[:, 1:, 1:] + vvv[:, 1:, :-1]    )
 
-    #-- meridional advective flux of V --
+    #-- meridional advective flux of V (from mom_v_adv_vv.F) --
     #- transport -
     vTrans = vvv * yA
     #- adv flux -
@@ -244,7 +244,7 @@ def advec_vm(uuu, vvv, www, grd, cori=False, metr=False):
             0.25 *(vTrans[:, :-1, :] + vTrans[:, 1:, :] ) \
                  *(   vvv[:, :-1, :] + vvv[:, 1:, :]   )
 
-    #-- vertical advective flux of V --
+    #-- vertical advective flux of V (mom_v_adv_wv.F) --
     #- transport -
     # rTransV :: vertical transport (above V point) 
     rTransV = np.zeros([nr, ny, nx])
@@ -268,7 +268,7 @@ def advec_vm(uuu, vvv, www, grd, cori=False, metr=False):
                 (maskC[1:, :-1, :] - maskC[:-1, :-1, :]) \
                      ) * vvv[1:, 1:, :]
 
-    #-- flux divergence --
+    #-- flux divergence (mom_fluxform.F) --
     #- zonal -
     gVx = np.zeros([nr, ny, nx])
     gVx[:, :, :-1] = - 1 / (hS * drF * rAs[np.newaxis, :, :])[:, :, :-1] \
