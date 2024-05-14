@@ -89,7 +89,7 @@ def advec_um(u1, v1, w1, u2, grd, cori=False, metr=False):
 
     Input:
        - u1, v1, w1: three dimensional ADVECTING velocity field
-       - u2:         three dimensional ADVECTED  velocity field
+       - u2:         zonal             ADVECTED  velocity field
        - grd: list of model grid varaibles
     Output:
        - ADVx_Um, ADVy_Um, ADVrE_Um: zonal, meridional and vertical u-momentum flux
@@ -200,8 +200,8 @@ def advec_um(u1, v1, w1, u2, grd, cori=False, metr=False):
       tanPhiAtU = np.zeros([ny, nx])
       tanPhiAtU[:-1, :] = np.tan( np.deg2rad( 0.5*(yG[:-1, :]+yG[1:, :]) ) )
       #
-      Um_metr[:, :-1, 1:] =                         \
-        u1[:, :-1, 1:]*recip_rSphere               \
+      Um_metr[:, :-1, 1:] =                       \
+        u1[:, :-1, 1:]*recip_rSphere              \
        *0.25*( v1[:, :-1, :-1] + v1[:, :-1, 1:]   \
               +v1[:, 1: , :-1] + v1[:, 1: , 1:] ) \
        *tanPhiAtU[:-1, 1:]
@@ -218,7 +218,7 @@ def advec_vm(u1, v1, w1, v2, grd, cori=False, metr=False):
 
     Input:
        - u1, v1, w1: three dimensional ADVECTING velocity field
-       - v2:         three dimensional ADVECTED  velocity field
+       - v2:         meridional        ADVECTED  velocity field
        - grd: list of model grid varaibles
     Output:
        - ADVx_Vm, ADVy_Vm, ADVrE_Vm: zonal, meridional and vertical v-momentum flux
@@ -327,10 +327,129 @@ def advec_vm(u1, v1, w1, v2, grd, cori=False, metr=False):
       tanPhiAtV = np.zeros([ny, nx])
       tanPhiAtV[:, :-1] = np.tan( np.deg2rad( 0.5*(yG[:, :-1]+yG[:, 1:]) ) )
       #
-      Vm_metr[:, 1:, :-1] = -recip_rSphere              \
+      Vm_metr[:, 1:, :-1] = -recip_rSphere            \
           *( 0.25*( u1[:, :-1, :-1] + u1[:, :-1, 1:]  \
                    +u1[:, 1: , :-1] + u1[:, 1: , 1:]) \
-           )**2                                         \
+           )**2                                       \
           *tanPhiAtV[1:, :-1]
 
     return Vm_Advec, ADVx_Vm, ADVy_Vm, ADVrE_Vm, Vm_Cori, Vm_metr
+
+
+
+def advec_ke(u, v, w, um, vm, wm, grd, eddymean='full', units='spec'):
+
+    '''
+    Compute the 3D advection kinetic energy.
+
+    Input:
+       - u, v, w   : three dimensional velocity field
+       - um, vm, wm: three dimensional velocity fieldi
+       - grd       : list of model grid varaibles
+       - eddymean  : eddy-mean flow decomposition (um=<u>, up=u')
+                     - 'full': u*div(u*u)
+                     - 'mean-mean-mean': um*div(um*um)
+                     - 'mean-mean-eddy': um*div(um*up)
+                     - 'mean-eddy-mean': um*div(up*um)
+                     - 'mean-eddy-eddy': um*div(up*up)
+                     - 'eddy-mean-mean': up*div(um*um)
+                     - 'eddy-mean-eddy': up*div(um*up)
+                     - 'eddy-eddy-mean': up*div(up*um)
+                     - 'eddy-eddy-eddy': up*div(up*up)
+
+    Output:
+       - KEm_Advec: KE tendency from Advection terms.
+
+    Note:
+       KEm_Advec is computed as (KEscheme.EQ.0 in MITgcm ; based on mom_calc_ke):
+                            __________I  _________J
+                       1  /                         \
+                 KE = --- | u*Um_Advec + v*Vm_Advec |
+                       2  \                         /
+      
+       with (u,v) taken as 'now' velocities,
+       i.e. same velocity field than used to estimate (Um,Vm)_Advec.
+       This is note consistent with the time-stepping of MITgcm (Adams-Bashforth 3),
+       where tendencies are evaluated at half time step.
+       An energetically consistant estimate would require to evaluate (u,v)
+       at half time step accordingly, but this would seriously complicate the diagnostics
+       and would fall apart as soon as we are not working with model snapshot outputed
+       at model time step frequency (i.e. always).
+    '''
+
+    rhoConst=998
+
+    #-- get and check dimensions --
+    [nr, ny, nx] = grd["hFacS"].shape
+    tmp = nr*ny*nx
+    if np.size(u)!=tmp or np.size(v)!=tmp or np.size(w)!=tmp or np.size(um)!=tmp or np.size(vm)!=tmp or np.size(wm)!=tmp :
+      raise ValueError("advec_ke: velocity field do not have the same/right dimension")
+
+
+    #-- define ke interpolation --
+    def mom_interp_ke(tmpu, tmpv, grd):
+      [nr, ny, nx] = grd["hFacS"].shape
+      tmpke = np.zeros([nr, ny, nx])
+      tmpke[:, :-1, :-1] = 0.5*(tmpu[:, :-1, :-1]+tmpu[:, :-1, 1:]) \
+                          +0.5*(tmpv[:, :-1, :-1]+tmpv[:, 1:, :-1])
+      return tmpke
+
+    #-- eddy-mean flow decomposition / full --
+    if eddymean=='full':
+      print('-- Compute full KE tendency due to advection --')
+      u2=u
+      v2=v
+      u1=u
+      v1=v
+      w1=w
+    else:
+      print('-- Define velocities associated with eddy-mean flow decomposition (to read backward): %s' %eddymean)
+      #- condition on zonal and meridional ADVECTED velocities -
+      if eddymean[-4:]=='eddy':
+        print('    3/ EDDY advected velocities')
+        u2=(u-um)
+        v2=(v-vm)
+      else:
+        print('    3/ MEAN advected velocities')
+        u2=um
+        v2=vm
+    
+      #- condition on 3D ADVECTING velocities -
+      if eddymean[5:-5]=='eddy':
+        print('    2/ EDDY advecting velocities')
+        u1=(u-um)
+        v1=(v-vm)
+        w1=(w-wm)
+      else:
+        print('    2/ MEAN advecting velocities')
+        u1=um
+        v1=vm
+        w1=wm
+
+    #- compute zonal and meridional momentum tendency due to advection -
+    Um_Advec, _, _, _, _, _ = advec_um(u1, v1, w1, u2, grd)
+    Vm_Advec, _, _, _, _, _ = advec_vm(u1, v1, w1, v2, grd)
+
+    #- condition on horizontal velocities multiplying hz velocity tendency due to advection 
+    if eddymean=='full':
+      UUm_Advec = u*Um_Advec
+      VVm_Advec = v*Vm_Advec
+    else:
+      if eddymean[:4]=='eddy':
+        print('    1/ EDDY velocities multiplying momentum tendencies')
+        UUm_Advec = (u-um)*Um_Advec
+        VVm_Advec = (v-vm)*Vm_Advec
+      else:
+        print('    1/ MEAN velocities multiplying momentum tendencies')
+        UUm_Advec = um*Um_Advec
+        VVm_Advec = vm*Vm_Advec
+
+    # compute kinetic energy tendency due to advection
+    if units=='spec':
+      print(r'-- Compute KE tendency due to advection ; units: m^2/s^2')
+      KEm_Advec = mom_interp_ke(UUm_Advec, VVm_Advec, grd)
+    elif units=='watts':
+      print(r'-- Compute KE tendency due to advection ; units: W/m^3')
+      KEm_Advec = rhoConst*mom_interp_ke(UUm_Advec, VVm_Advec, grd)
+
+    return KEm_Advec
